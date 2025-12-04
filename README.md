@@ -1,8 +1,6 @@
 # ⚡ SCOPTO.IO - Pro Crypto Portfolio Tracker
 
-![Scopto Banner](https://via.placeholder.com/1200x400/050505/00f3ff?text=SCOPTO+PRO+DASHBOARD)
-
-**Scopto** is a futuristic, cyberpunk-themed Web3 portfolio tracker built with **Next.js**, **Supabase**, and **Ethers.js**. It allows users to track Ethereum wallets, monitor live market data, and visualize asset allocation in a high-contrast, professional dashboard.
+**Scopto** is a futuristic, cyberpunk-themed Web3 portfolio tracker built with **Next.js**, **Supabase**, and **Ethers.js**. It allows users to track Ethereum wallets, monitor live market data via on-chain oracles, and visualize asset allocation in a high-contrast, professional dashboard.
 
 ---
 
@@ -12,11 +10,11 @@
 * **Multi-Wallet Tracking:** Add and monitor multiple Ethereum addresses simultaneously.
 * **Live Net Worth:** Automatic calculation of total holdings across all tracked wallets.
 * **Token Discovery:** Automatically fetches native ETH and ERC-20 token balances using the Ethplorer API.
-* **Dust Filter:** One-click toggle to hide assets worth less than $10.
+* **Dust Filter:** One-click toggle to hide assets worth less than $1.
 
 ### 📊 Real-Time Market Data
-* **Live Tickers:** Real-time updates for Ethereum Price and Global Crypto Volume (24H).
-* **Visual Charts:** Interactive **Neon Pie Chart** showing portfolio asset distribution.
+* **Censorship-Resistant Pricing:** Uses **Chainlink On-Chain Oracles** to fetch ETH prices directly from the blockchain, bypassing API blocks and CORS issues.
+* **Global Metrics:** Real-time updates for Global Crypto Volume (24H) via CoinLore.
 * **Animated Counters:** Smooth counting animations for all numerical data updates.
 
 ### 🐳 Whale Watchlist
@@ -38,21 +36,20 @@
 * **Styling:** [React Bootstrap](https://react-bootstrap.github.io/) + Custom CSS-in-JS
 * **Backend/Auth:** [Supabase](https://supabase.com/) (Magic Link Auth & PostgreSQL)
 * **Blockchain Interaction:** [Ethers.js v6](https://docs.ethers.org/)
-* **Data Visualization:** [Recharts](https://recharts.org/)
-* **APIs:**
-    * **CoinCap:** Live market data.
-    * **Ethplorer:** Token balances.
-    * **LlamaNodes:** Public RPC endpoint.
+* **Data Sources:**
+    * **Chainlink Oracle:** Decentralized ETH Price feeds.
+    * **CoinLore:** Global Volume data.
+    * **Ethplorer:** Token balances and metadata.
+    * **LlamaRPC:** Public RPC endpoint for blockchain connection.
 
 ---
- 
+
 ## 🖼️ Application Overview
 
 ### Login Screen
 A secure, email-based Magic Link login system styled with a dark, minimalist aesthetic.
 
 ### The Dashboard
-* **Top Bar:** Live ETH Price ticker and Disconnect button.
+* **Top Bar:** Live ETH Price ticker (On-Chain) and Disconnect button.
 * **Stats Deck:** Total Net Worth and Global 24H Volume with neon glow effects.
-* **Portfolio Split:** A donut chart visualizing asset diversity.
-* **Wallet Cards:** Individual cards for every tracked wallet showing granular token details.
+* **Wallet Cards:** Individual cards for every tracked wallet showing granular token details, balances, and values.
