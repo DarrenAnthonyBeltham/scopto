@@ -35,6 +35,9 @@ const NETWORKS = {
   ethereum: "https://eth.llamarpc.com",
 }
 
+const CHAINLINK_ETH_USD_FEED = "0x5f4eC3Df9cbd43714FE2740f5E3616155c5b8419"
+const CHAINLINK_ABI = ["function latestAnswer() view returns (int256)"]
+
 const FAMOUS_WHALES = [
   { name: "Binance Cold Wallet", address: "0x47ac0Fb4F2D84898e4D9E7b4DaB3C24507a6D503" },
   { name: "Vitalik Buterin", address: "0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045" },
@@ -44,13 +47,15 @@ const FAMOUS_WHALES = [
   { name: "Justin Sun (Tron)", address: "0x3DdfA8eC3052539b6C9549F12cEA2C295cfF5296" }
 ]
 
-function AnimatedCounter({ value, prefix = "$" }: { value: number, prefix?: string }) {
-  const [displayValue, setDisplayValue] = useState(value)
-  const previousValue = useRef(value)
+function AnimatedCounter({ value, prefix = "$" }: { value: number | null, prefix?: string }) {
+  const [displayValue, setDisplayValue] = useState(value || 0)
+  const previousValue = useRef(value || 0)
   const startTime = useRef<number | null>(null)
   const duration = 1500 
 
   useEffect(() => {
+    if (value === null) return
+
     previousValue.current = displayValue
     startTime.current = null
     let animationFrameId: number
@@ -71,7 +76,11 @@ function AnimatedCounter({ value, prefix = "$" }: { value: number, prefix?: stri
 
     animationFrameId = requestAnimationFrame(animate)
     return () => cancelAnimationFrame(animationFrameId)
-  }, [value])
+  }, [value]) 
+
+  if (value === null) {
+    return <span>{prefix}--</span>
+  }
 
   return (
     <span>
@@ -89,7 +98,7 @@ export default function Home() {
   const [loginMessage, setLoginMessage] = useState<string>('')
   
   const [liveEthPrice, setLiveEthPrice] = useState<number>(0)
-  const [liveGlobalVolume, setLiveGlobalVolume] = useState<number>(0)
+  const [liveGlobalVolume, setLiveGlobalVolume] = useState<number | null>(null)
   
   const [hideDust, setHideDust] = useState<boolean>(true)
   const [showWhaleModal, setShowWhaleModal] = useState<boolean>(false)
@@ -104,6 +113,8 @@ export default function Home() {
   const [showAlertModal, setShowAlertModal] = useState(false)
   const [alertMessage, setAlertMessage] = useState('')
 
+  const hasFetchedMarketData = useRef(false)
+
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session)
@@ -115,10 +126,14 @@ export default function Home() {
       if (session) initDashboard(session.user.id)
     })
 
-    fetchMarketData() 
+    if (!hasFetchedMarketData.current) {
+        fetchMarketData()
+        hasFetchedMarketData.current = true
+    }
+
     const intervalId = setInterval(() => {
         fetchMarketData()
-    }, 15000)
+    }, 120000) 
 
     return () => {
         subscription.unsubscribe()
@@ -128,27 +143,34 @@ export default function Home() {
 
   const initDashboard = (userId: string) => {
     fetchSavedWallets(userId)
-    fetchMarketData()
   }
 
   const fetchMarketData = async () => {
     try {
-        const ethRes = await fetch('https://api.coincap.io/v2/assets/ethereum')
-        const ethJson = await ethRes.json()
-        if (ethJson.data && ethJson.data.priceUsd) {
-            setLiveEthPrice(parseFloat(ethJson.data.priceUsd))
+        const provider = new ethers.JsonRpcProvider(NETWORKS.ethereum)
+        const priceFeed = new ethers.Contract(CHAINLINK_ETH_USD_FEED, CHAINLINK_ABI, provider)
+        const roundData = await priceFeed.latestAnswer()
+        const price = Number(roundData) / 100000000 
+        setLiveEthPrice(price)
+    } catch (e) {
+        try {
+            const res = await fetch('https://min-api.cryptocompare.com/data/price?fsym=ETH&tsyms=USD')
+            const json = await res.json()
+            if (json.USD) setLiveEthPrice(json.USD)
+        } catch (err) {
+            console.error(err)
         }
+    }
 
-        const assetsRes = await fetch('https://api.coincap.io/v2/assets?limit=100')
-        const assetsJson = await assetsRes.json()
-        if (assetsJson.data) {
-            const totalVol = assetsJson.data.reduce((acc: number, asset: any) => {
-                return acc + (parseFloat(asset.volumeUsd24Hr) || 0)
-            }, 0)
-            setLiveGlobalVolume(totalVol)
+    try {
+        const globalRes = await fetch('https://api.coinlore.net/api/global/')
+        const globalJson = await globalRes.json()
+        if (Array.isArray(globalJson) && globalJson.length > 0) {
+             const vol = globalJson[0].total_volume || globalJson[0].volume_24h
+             if (vol) setLiveGlobalVolume(vol)
         }
     } catch (e) {
-        console.warn('Market Data Error:', e)
+        setLiveGlobalVolume(null) 
     }
   }
 
@@ -230,8 +252,8 @@ export default function Home() {
             let finalPrice = token.price
             let finalValue = token.valueUSD
             if (token.isNative || token.symbol === 'ETH') {
-                finalPrice = liveEthPrice
-                finalValue = token.balance * liveEthPrice
+                finalPrice = liveEthPrice || token.price 
+                finalValue = token.balance * finalPrice
             }
             walletTotal += finalValue
             return { ...token, price: finalPrice, valueUSD: finalValue }
@@ -460,8 +482,10 @@ export default function Home() {
           </Navbar.Brand>
           <div className="d-flex align-items-center gap-4">
             <div className="d-flex align-items-center gap-2 px-3 py-2 rounded-0" style={{background: 'rgba(0,0,0,0.5)', border: '1px solid #222'}}>
-                <div className="live-dot"></div>
-                <span className="text-white small fw-bold font-monospace">ETH: ${liveEthPrice.toLocaleString()}</span>
+                <div className={`live-dot ${liveEthPrice === 0 ? 'bg-danger' : ''}`}></div>
+                <span className="text-white small fw-bold font-monospace">
+                   ETH: {liveEthPrice > 0 ? `$${liveEthPrice.toLocaleString()}` : 'CONNECTING...'}
+                </span>
             </div>
             <Button size="sm" onClick={handleLogout} className="btn-neon-outline px-4 py-2" style={{letterSpacing: '1px', fontSize: '0.8rem'}}>DISCONNECT</Button>
           </div>
