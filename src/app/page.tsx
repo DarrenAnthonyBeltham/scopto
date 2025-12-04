@@ -12,6 +12,38 @@ const techFont = Rajdhani({
   weight: ['400', '600', '700'] 
 })
 
+interface Token {
+  symbol: string
+  name: string
+  balance: number
+  price: number
+  valueUSD: number
+  isNative: boolean
+}
+
+interface WalletData {
+  id: number
+  user_id: string
+  wallet_address: string
+  nickname?: string
+  ens_name?: string | null
+  created_at: string
+  tokens: Token[]
+}
+
+const NETWORKS = {
+  ethereum: "https://eth.llamarpc.com",
+}
+
+const FAMOUS_WHALES = [
+  { name: "Binance Cold Wallet", address: "0x47ac0Fb4F2D84898e4D9E7b4DaB3C24507a6D503" },
+  { name: "Vitalik Buterin", address: "0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045" },
+  { name: "Ethereum Foundation", address: "0xde0B295669a9FD93d5F28D9Ec85E40f4cb697BAe" },
+  { name: "Kraken Exchange", address: "0x2910543Af39abA0Cd09dBb2D50200b3E800A63D2" },
+  { name: "Crypto.com Cold", address: "0x6262998Ced04146fA42253a5C0AF90CA02dfd2A3" },
+  { name: "Justin Sun (Tron)", address: "0x3DdfA8eC3052539b6C9549F12cEA2C295cfF5296" }
+]
+
 function AnimatedCounter({ value, prefix = "$" }: { value: number, prefix?: string }) {
   const [displayValue, setDisplayValue] = useState(value)
   const previousValue = useRef(value)
@@ -48,38 +80,6 @@ function AnimatedCounter({ value, prefix = "$" }: { value: number, prefix?: stri
   )
 }
 
-interface Token {
-  symbol: string
-  name: string
-  balance: number
-  price: number
-  valueUSD: number
-  isNative: boolean
-}
-
-interface WalletData {
-  id: number
-  user_id: string
-  wallet_address: string
-  nickname?: string
-  ens_name?: string | null
-  created_at: string
-  tokens: Token[]
-}
-
-const NETWORKS = {
-  ethereum: "https://eth.llamarpc.com",
-}
-
-const FAMOUS_WHALES = [
-  { name: "Binance Cold Wallet", address: "0x47ac0Fb4F2D84898e4D9E7b4DaB3C24507a6D503" },
-  { name: "Vitalik Buterin", address: "0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045" },
-  { name: "Ethereum Foundation", address: "0xde0B295669a9FD93d5F28D9Ec85E40f4cb697BAe" },
-  { name: "Kraken Exchange", address: "0x2910543Af39abA0Cd09dBb2D50200b3E800A63D2" },
-  { name: "Crypto.com Cold", address: "0x6262998Ced04146fA42253a5C0AF90CA02dfd2A3" },
-  { name: "Justin Sun (Tron)", address: "0x3DdfA8eC3052539b6C9549F12cEA2C295cfF5296" }
-]
-
 export default function Home() {
   const [session, setSession] = useState<Session | null>(null)
   const [loading, setLoading] = useState<boolean>(false)
@@ -89,7 +89,7 @@ export default function Home() {
   const [loginMessage, setLoginMessage] = useState<string>('')
   
   const [liveEthPrice, setLiveEthPrice] = useState<number>(0)
-  const [liveEthVolume, setLiveEthVolume] = useState<number>(0)
+  const [liveGlobalVolume, setLiveGlobalVolume] = useState<number>(0)
   
   const [hideDust, setHideDust] = useState<boolean>(true)
   const [showWhaleModal, setShowWhaleModal] = useState<boolean>(false)
@@ -115,9 +115,10 @@ export default function Home() {
       if (session) initDashboard(session.user.id)
     })
 
+    fetchMarketData() 
     const intervalId = setInterval(() => {
         fetchMarketData()
-    }, 10000)
+    }, 15000)
 
     return () => {
         subscription.unsubscribe()
@@ -132,16 +133,22 @@ export default function Home() {
 
   const fetchMarketData = async () => {
     try {
-        const res = await fetch('https://api.coincap.io/v2/assets/ethereum')
-        const json = await res.json()
-        const data = json.data
+        const ethRes = await fetch('https://api.coincap.io/v2/assets/ethereum')
+        const ethJson = await ethRes.json()
+        if (ethJson.data && ethJson.data.priceUsd) {
+            setLiveEthPrice(parseFloat(ethJson.data.priceUsd))
+        }
 
-        if (data) {
-            setLiveEthPrice(parseFloat(data.priceUsd))
-            setLiveEthVolume(parseFloat(data.volumeUsd24Hr))
+        const assetsRes = await fetch('https://api.coincap.io/v2/assets?limit=100')
+        const assetsJson = await assetsRes.json()
+        if (assetsJson.data) {
+            const totalVol = assetsJson.data.reduce((acc: number, asset: any) => {
+                return acc + (parseFloat(asset.volumeUsd24Hr) || 0)
+            }, 0)
+            setLiveGlobalVolume(totalVol)
         }
     } catch (e) {
-        console.warn("Market data skipped")
+        console.warn('Market Data Error:', e)
     }
   }
 
@@ -170,7 +177,7 @@ export default function Home() {
           ensName = await provider.lookupAddress(w.wallet_address)
         } catch {}
 
-        const res = await fetch(`https://api.ethplorer.io/getAddressInfo/${w.wallet_address}?apiKey=freekey`)
+        const res = await fetch(`https://api.ethplorer.io/getAddressInfo/${w.wallet_address}?apiKey=EK-jgPe8-vuG5SS3-yENUQ`)
         const data = await res.json()
 
         if (data.ETH) {
@@ -256,7 +263,7 @@ export default function Home() {
 
   const addWalletToDb = async (address: string, nickname?: string) => {
     if (!ethers.isAddress(address)) {
-        setAlertMessage('Invalid Ethereum Address. Please check the format.')
+        setAlertMessage('Invalid Ethereum Address')
         setShowAlertModal(true)
         return
     }
@@ -333,23 +340,14 @@ export default function Home() {
   if (!session) {
     return (
       <Container fluid className={`d-flex flex-column align-items-center justify-content-center vh-100 ${techFont.className}`} style={{background: '#050505'}}>
-        <style jsx global>{`
-          .glass-panel {
-            background: rgba(255, 255, 255, 0.03);
-            backdrop-filter: blur(16px);
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            color: white;
-          }
-          input { background: rgba(0,0,0,0.5) !important; border: 1px solid #333 !important; color: white !important; }
-        `}</style>
-        <h1 className="fw-bold mb-4 display-3" style={{color: '#00f3ff', textShadow: '0 0 30px rgba(0,243,255,0.6)'}}>SCOPTO</h1>
-        <Card className="shadow border-0 p-5 glass-panel" style={{ width: '100%', maxWidth: '400px', borderRadius: '20px' }}>
+        <h1 className="fw-bold mb-4 display-3 text-white" style={{letterSpacing: '4px'}}>SCOPTO<span style={{color: '#00f3ff'}}>.IO</span></h1>
+        <Card className="shadow-lg border-0 p-5" style={{ width: '100%', maxWidth: '400px', background: '#0a0a0a', border: '1px solid #1a1a1a' }}>
           <Form onSubmit={handleLogin}>
             <Form.Group className="mb-4">
               <Form.Label className="text-secondary small letter-spacing-2">ACCESS PROTOCOL</Form.Label>
-              <Form.Control type="email" placeholder="name@example.com" value={email} onChange={e => setEmail(e.target.value)} required />
+              <Form.Control type="email" placeholder="name@example.com" value={email} onChange={e => setEmail(e.target.value)} required style={{background: '#000', border: '1px solid #333', color: 'white'}} />
             </Form.Group>
-            <Button variant="outline-info" type="submit" className="w-100 py-3 fw-bold" disabled={loading} style={{boxShadow: '0 0 15px rgba(0,243,255,0.2)', letterSpacing: '2px'}}>
+            <Button variant="outline-info" type="submit" className="w-100 py-3 fw-bold rounded-0" disabled={loading} style={{boxShadow: '0 0 15px rgba(0,243,255,0.2)', letterSpacing: '2px'}}>
               {loading ? 'INITIALIZING...' : 'CONNECT'}
             </Button>
           </Form>
@@ -360,53 +358,56 @@ export default function Home() {
   }
 
   return (
-    <div className={`min-vh-100 pb-5 ${techFont.className}`} style={{background: 'radial-gradient(circle at 50% 0%, #1a1a2e 0%, #000000 100%)', color: '#e0e0e0'}}>
+    <div className={`min-vh-100 pb-5 ${techFont.className}`} style={{background: '#050505', color: '#e0e0e0'}}>
       <style jsx global>{`
+        body { margin: 0; padding: 0; background: #050505; }
         ::-webkit-scrollbar { width: 6px; }
         ::-webkit-scrollbar-track { background: #000; }
         ::-webkit-scrollbar-thumb { background: #333; border-radius: 3px; }
         ::-webkit-scrollbar-thumb:hover { background: #00f3ff; }
 
         .glass-nav {
-            background: rgba(0, 0, 0, 0.8);
-            backdrop-filter: blur(20px);
-            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+            background: rgba(10, 10, 10, 0.85);
+            backdrop-filter: blur(16px);
+            border-bottom: 1px solid rgba(0, 243, 255, 0.2);
+            box-shadow: 0 4px 30px rgba(0, 0, 0, 0.5);
         }
         
         .cyber-card {
-            background: rgba(15, 15, 25, 0.7);
-            backdrop-filter: blur(12px);
-            border: 1px solid rgba(255, 255, 255, 0.08);
-            border-radius: 12px;
-            transition: all 0.3s ease;
+            background: #0a0a0a;
+            border: 1px solid #1a1a1a;
             position: relative;
             overflow: hidden;
+            box-shadow: 0 0 20px rgba(0,0,0,0.5);
         }
 
-        .cyber-card:hover {
-            border-color: rgba(0, 243, 255, 0.4);
-            box-shadow: 0 0 30px rgba(0, 243, 255, 0.1);
-            transform: translateY(-2px);
+        .cyber-card::before {
+            content: '';
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 2px;
+            background: linear-gradient(90deg, transparent, #00f3ff, transparent);
+            opacity: 0.3;
         }
 
         .text-neon { color: #00f3ff; text-shadow: 0 0 15px rgba(0,243,255,0.5); }
-        .text-light-muted { color: #b0b0b0 !important; }
+        .text-white-bright { color: #fff !important; text-shadow: 0 0 10px rgba(255,255,255,0.2); }
 
         .form-control-cyber {
-            background: rgba(255,255,255,0.05) !important;
-            border: 1px solid rgba(255,255,255,0.1) !important;
+            background: #000 !important;
+            border: 1px solid #222 !important;
             color: #fff !important;
             border-radius: 0;
             padding: 12px;
+            font-family: monospace;
         }
         .form-control-cyber:focus {
             border-color: #00f3ff !important;
             box-shadow: 0 0 20px rgba(0,243,255,0.15) !important;
         }
 
-        .table-cyber { --bs-table-bg: transparent; --bs-table-color: #fff; border-color: rgba(255,255,255,0.05); }
-        .table-cyber th { color: #888; font-weight: 600; letter-spacing: 1px; font-size: 0.85rem; text-transform: uppercase; border-bottom: 1px solid rgba(255,255,255,0.1); }
-        .table-cyber td { vertical-align: middle; border-bottom: 1px solid rgba(255,255,255,0.05); font-size: 1.1rem; }
+        .table-cyber { --bs-table-bg: transparent; --bs-table-color: #fff; border-color: #1a1a1a; }
+        .table-cyber th { color: #666; font-weight: 600; letter-spacing: 1px; font-size: 0.8rem; text-transform: uppercase; border-bottom: 1px solid #222; }
+        .table-cyber td { vertical-align: middle; border-bottom: 1px solid #1a1a1a; font-size: 1.1rem; }
         
         .modal-content {
             background: #080810;
@@ -431,6 +432,19 @@ export default function Home() {
             box-shadow: 0 0 30px rgba(0,243,255,0.6);
         }
 
+        .btn-neon-outline {
+            background: transparent;
+            border: 1px solid #00f3ff;
+            color: #00f3ff;
+            border-radius: 0;
+            transition: 0.3s;
+        }
+        .btn-neon-outline:hover {
+            background: rgba(0, 243, 255, 0.1);
+            color: #fff;
+            box-shadow: 0 0 15px rgba(0,243,255,0.3);
+        }
+
         @keyframes pulse {
             0% { box-shadow: 0 0 0 0 rgba(0, 243, 255, 0.7); }
             70% { box-shadow: 0 0 0 6px rgba(0, 243, 255, 0); }
@@ -439,17 +453,17 @@ export default function Home() {
         .live-dot { width: 8px; height: 8px; background: #00f3ff; border-radius: 50%; animation: pulse 2s infinite; }
       `}</style>
 
-      <Navbar fixed="top" className="glass-nav py-3">
+      <Navbar fixed="top" className="glass-nav py-3" variant="dark">
         <Container fluid className="px-4">
-          <Navbar.Brand className="fw-bold fs-3" style={{letterSpacing: '3px'}}>
-            SCOPTO<span style={{color: '#00f3ff'}}>.IO</span>
+          <Navbar.Brand className="fw-bold fs-3 text-white" style={{letterSpacing: '3px'}}>
+            SCOPTO<span className="text-neon">.IO</span>
           </Navbar.Brand>
           <div className="d-flex align-items-center gap-4">
-            <div className="d-flex align-items-center gap-2 px-3 py-1 rounded" style={{background: 'rgba(255,255,255,0.05)'}}>
+            <div className="d-flex align-items-center gap-2 px-3 py-2 rounded-0" style={{background: 'rgba(0,0,0,0.5)', border: '1px solid #222'}}>
                 <div className="live-dot"></div>
-                <span className="text-white small fw-bold">ETH: ${liveEthPrice.toLocaleString()}</span>
+                <span className="text-white small fw-bold font-monospace">ETH: ${liveEthPrice.toLocaleString()}</span>
             </div>
-            <Button variant="outline-danger" size="sm" onClick={handleLogout} style={{borderRadius: '0', fontSize: '0.75rem', padding: '6px 18px', letterSpacing: '1px'}}>DISCONNECT</Button>
+            <Button size="sm" onClick={handleLogout} className="btn-neon-outline px-4 py-2" style={{letterSpacing: '1px', fontSize: '0.8rem'}}>DISCONNECT</Button>
           </div>
         </Container>
       </Navbar>
@@ -460,7 +474,7 @@ export default function Home() {
             <Card className="cyber-card h-100 text-center py-5">
               <Card.Body className="d-flex flex-column justify-content-center">
                 <h6 className="text-secondary mb-3" style={{letterSpacing: '3px', fontSize: '0.8rem'}}>TOTAL NET WORTH</h6>
-                <h1 className="display-3 fw-bold mb-0 text-white">
+                <h1 className="display-3 fw-bold mb-0 text-white-bright">
                     <AnimatedCounter value={totalNetWorth} />
                 </h1>
               </Card.Body>
@@ -469,9 +483,9 @@ export default function Home() {
           <Col md={6}>
             <Card className="cyber-card h-100 text-center py-5">
               <Card.Body className="d-flex flex-column justify-content-center">
-                <h6 className="text-secondary mb-3" style={{letterSpacing: '3px', fontSize: '0.8rem'}}>GLOBAL 24H VOLUME</h6>
+                <h6 className="text-secondary mb-3" style={{letterSpacing: '3px', fontSize: '0.8rem'}}>GLOBAL CRYPTO VOLUME (24H)</h6>
                 <h1 className="display-3 fw-bold mb-0 text-neon">
-                    <AnimatedCounter value={liveEthVolume} />
+                    <AnimatedCounter value={liveGlobalVolume} />
                 </h1>
               </Card.Body>
             </Card>
@@ -486,15 +500,17 @@ export default function Home() {
                 value={addressInput} 
                 onChange={e => setAddressInput(e.target.value)} 
                 className="form-control-cyber"
-                style={{fontFamily: 'monospace'}}
               />
-              <Button type="submit" className="btn-neon px-4 fw-bold">TRACK</Button>
+              <Button type="submit" className="btn-neon px-4 fw-bold">TRACK ID</Button>
             </Form>
           </Col>
-          <Col md={6} className="d-flex justify-content-end gap-3">
-            <Button variant="outline-light" className="border-0 text-light-muted" onClick={() => setShowWhaleModal(true)}><span className="me-2 text-neon">★</span>Whales</Button>
-            <Button variant="outline-light" className="border-0 text-light-muted" onClick={() => setHideDust(!hideDust)}>{hideDust ? '👁️ Show Dust' : '🚫 Hide Dust'}</Button>
-            <Button variant="outline-success" size="sm" onClick={downloadCSV} style={{borderRadius: 0, letterSpacing: '1px'}}>DOWNLOAD CSV</Button>
+          <Col md={6} className="d-flex justify-content-end gap-3 align-items-center">
+            <Button variant="link" className="text-decoration-none text-muted" onClick={() => setShowWhaleModal(true)}><span className="me-1 text-neon">★</span> WHALE WATCHLIST</Button>
+            <div className="form-check form-switch">
+                <input className="form-check-input" type="checkbox" id="dustSwitch" checked={hideDust} onChange={() => setHideDust(!hideDust)} style={{backgroundColor: hideDust ? '#00f3ff' : '#333', borderColor: '#333'}} />
+                <label className="form-check-label text-muted small" htmlFor="dustSwitch">HIDE DUST</label>
+            </div>
+            <Button variant="outline-success" size="sm" onClick={downloadCSV} className="rounded-0 ms-2" style={{letterSpacing: '1px'}}>EXPORT CSV</Button>
           </Col>
         </Row>
 
@@ -504,27 +520,27 @@ export default function Home() {
           {displayWallets.map(wallet => (
             <Col xs={12} key={wallet.id} className="mb-4">
               <Card className="cyber-card">
-                <Card.Header className="bg-transparent border-bottom border-dark py-4 d-flex justify-content-between align-items-center">
-                  <div className="d-flex align-items-center gap-3">
-                    <div className="rounded-circle d-flex align-items-center justify-content-center" style={{width:'48px', height:'48px', background: 'rgba(0,243,255,0.1)', border:'1px solid rgba(0,243,255,0.2)'}}>
-                        <span style={{fontSize:'1.4rem'}}>👤</span>
+                <Card.Header className="bg-transparent border-bottom border-secondary py-4 d-flex justify-content-between align-items-center">
+                  <div className="d-flex align-items-center gap-4">
+                    <div className="rounded-circle d-flex align-items-center justify-content-center" style={{width:'50px', height:'50px', background: 'rgba(0,243,255,0.1)', border:'1px solid rgba(0,243,255,0.3)'}}>
+                        <span style={{fontSize:'1.5rem'}}>👤</span>
                     </div>
                     <div>
-                        <div className="d-flex align-items-center gap-2">
-                            <h4 className="mb-0 fw-bold text-white">{wallet.nickname || wallet.ens_name || 'Unknown Wallet'}</h4>
+                        <div className="d-flex align-items-center gap-3">
+                            <h4 className="mb-0 fw-bold text-white-bright">{wallet.nickname || wallet.ens_name || 'Unknown Wallet'}</h4>
                             <Button variant="link" className="p-0 text-secondary" onClick={() => requestRename(wallet.id, wallet.nickname)}>✎</Button>
                         </div>
-                        <div className="d-flex align-items-center gap-2">
-                            <small className="text-muted font-monospace">{wallet.wallet_address}</small>
+                        <div className="d-flex align-items-center gap-2 mt-1">
+                            <small className="font-monospace text-white opacity-75">{wallet.wallet_address}</small>
                             <a href={`https://etherscan.io/address/${wallet.wallet_address}`} target="_blank" className="text-decoration-none text-neon small">↗</a>
                         </div>
                     </div>
                   </div>
                   <div className="text-end">
-                    <h3 className="fw-bold mb-0 text-white">
+                    <h3 className="fw-bold mb-0 text-white-bright">
                         ${wallet.totalValueUSD.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}
                     </h3>
-                    <small className="text-danger" style={{cursor:'pointer', letterSpacing: '1px', fontSize: '0.7rem', textTransform: 'uppercase'}} onClick={() => requestDelete(wallet.id)}>STOP TRACKING</small>
+                    <small className="text-danger" style={{cursor:'pointer', letterSpacing: '1px', fontSize: '0.75rem', fontWeight: 'bold'}} onClick={() => requestDelete(wallet.id)}>TERMINATE TRACKING</small>
                   </div>
                 </Card.Header>
                 <Card.Body className="p-0">
@@ -543,8 +559,8 @@ export default function Home() {
                             <td className="ps-5">
                                 <span className={`fw-bold fs-5 ${token.symbol === 'ETH' ? 'text-neon' : 'text-white'}`}>{token.symbol}</span>
                             </td>
-                            <td className="text-end font-monospace text-light-muted">{token.balance.toLocaleString()}</td>
-                            <td className="text-end font-monospace text-light-muted">${token.price.toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
+                            <td className="text-end font-monospace text-white opacity-75">{token.balance.toLocaleString()}</td>
+                            <td className="text-end font-monospace text-white opacity-75">${token.price.toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
                             <td className="text-end pe-5 font-monospace text-white fw-bold fs-5">${token.valueUSD.toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
                           </tr>
                       ))}
@@ -560,14 +576,14 @@ export default function Home() {
         </Row>
       </Container>
 
-      <Modal show={showWhaleModal} onHide={() => setShowWhaleModal(false)} centered contentClassName="bg-dark text-white border-0">
-        <Modal.Header closeButton className="border-secondary"><Modal.Title className="fw-bold">STAR WATCHLIST</Modal.Title></Modal.Header>
+      <Modal show={showWhaleModal} onHide={() => setShowWhaleModal(false)} centered contentClassName="bg-dark text-white border border-secondary">
+        <Modal.Header closeButton closeVariant="white" className="border-secondary"><Modal.Title className="fw-bold">STAR WATCHLIST</Modal.Title></Modal.Header>
         <Modal.Body className="bg-black p-0">
           <div className="d-grid">
             {FAMOUS_WHALES.map((whale, idx) => (
-              <Button key={idx} variant="outline-dark" onClick={() => addWalletToDb(whale.address, whale.name)} className="text-start d-flex justify-content-between align-items-center p-4 border-bottom border-dark rounded-0 text-light">
+              <Button key={idx} variant="outline-dark" onClick={() => addWalletToDb(whale.address, whale.name)} className="text-start d-flex justify-content-between align-items-center p-4 border-bottom border-dark rounded-0 text-white">
                 <span className="fw-bold fs-5">{whale.name}</span>
-                <span className="text-muted small font-monospace">{whale.address.substring(0,8)}...</span>
+                <span className="text-secondary small font-monospace">{whale.address.substring(0,8)}...</span>
               </Button>
             ))}
           </div>
@@ -580,29 +596,29 @@ export default function Home() {
           <h2 className="mb-3 text-danger">TERMINATE TRACKING?</h2>
           <p className="text-muted">This action will remove the wallet from your local dashboard immediately.</p>
           <div className="d-flex justify-content-center gap-3 mt-5">
-             <Button variant="outline-secondary" onClick={() => setShowDeleteModal(false)} className="px-4">CANCEL</Button>
-             <Button variant="danger" onClick={confirmDelete} className="px-5">CONFIRM</Button>
+             <Button variant="outline-secondary" onClick={() => setShowDeleteModal(false)} className="px-4 rounded-0">CANCEL</Button>
+             <Button variant="danger" onClick={confirmDelete} className="px-5 rounded-0">CONFIRM</Button>
           </div>
         </Modal.Body>
       </Modal>
 
       <Modal show={showNicknameModal} onHide={() => setShowNicknameModal(false)} centered contentClassName="bg-dark border-secondary">
-        <Modal.Header closeButton className="bg-black border-secondary text-white"><Modal.Title>MODIFY LABEL</Modal.Title></Modal.Header>
+        <Modal.Header closeButton closeVariant="white" className="bg-black border-secondary text-white"><Modal.Title>MODIFY LABEL</Modal.Title></Modal.Header>
         <Modal.Body className="bg-black text-white py-4">
             <Form onSubmit={(e) => { e.preventDefault(); saveNickname(); }}>
                 <Form.Control type="text" className="form-control-cyber" value={tempNickname} onChange={(e) => setTempNickname(e.target.value)} autoFocus placeholder="Enter new label..." />
             </Form>
         </Modal.Body>
         <Modal.Footer className="bg-black border-secondary">
-          <Button variant="outline-secondary" onClick={() => setShowNicknameModal(false)}>CANCEL</Button>
-          <Button variant="info" onClick={saveNickname} className="px-4">SAVE</Button>
+          <Button variant="outline-secondary" onClick={() => setShowNicknameModal(false)} className="rounded-0">CANCEL</Button>
+          <Button variant="info" onClick={saveNickname} className="px-4 rounded-0 btn-neon">SAVE</Button>
         </Modal.Footer>
       </Modal>
 
       <Modal show={showAlertModal} onHide={() => setShowAlertModal(false)} centered contentClassName="bg-dark border-info">
-        <Modal.Header closeButton className="bg-black border-0 text-info"><Modal.Title>SYSTEM NOTICE</Modal.Title></Modal.Header>
+        <Modal.Header closeButton closeVariant="white" className="bg-black border-0 text-info"><Modal.Title>SYSTEM NOTICE</Modal.Title></Modal.Header>
         <Modal.Body className="bg-black text-white py-4"><p className="mb-0 fs-5 text-center">{alertMessage}</p></Modal.Body>
-        <Modal.Footer className="bg-black border-0 justify-content-center"><Button variant="outline-info" onClick={() => setShowAlertModal(false)} className="px-5">ACKNOWLEDGE</Button></Modal.Footer>
+        <Modal.Footer className="bg-black border-0 justify-content-center"><Button variant="outline-info" onClick={() => setShowAlertModal(false)} className="px-5 rounded-0 btn-neon">ACKNOWLEDGE</Button></Modal.Footer>
       </Modal>
       
     </div>
