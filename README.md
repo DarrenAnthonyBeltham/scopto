@@ -1,36 +1,55 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# ⚡ SCOPTO.IO - Pro Crypto Portfolio Tracker
 
-## Getting Started
+**Scopto** is a futuristic, cyberpunk-themed Web3 portfolio tracker built with **Next.js**, **Supabase**, and **Ethers.js**. It allows users to track Ethereum wallets, monitor live market data via on-chain oracles, and visualize asset allocation in a high-contrast, professional dashboard.
 
-First, run the development server:
+---
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
+## 🚀 Key Features
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+### 💎 Portfolio Management
+* **Multi-Wallet Tracking:** Add and monitor multiple Ethereum addresses simultaneously.
+* **Live Net Worth:** Automatic calculation of total holdings across all tracked wallets.
+* **Token Discovery:** Automatically fetches native ETH and ERC-20 token balances using the Ethplorer API.
+* **Dust Filter:** One-click toggle to hide assets worth less than $1.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+### 📊 Real-Time Market Data
+* **Censorship-Resistant Pricing:** Uses **Chainlink On-Chain Oracles** to fetch ETH prices directly from the blockchain, bypassing API blocks and CORS issues.
+* **Global Metrics:** Real-time updates for Global Crypto Volume (24H) via CoinLore.
+* **Animated Counters:** Smooth counting animations for all numerical data updates.
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+### 🐳 Whale Watchlist
+* **Pre-loaded Whales:** Instantly track famous wallets (Vitalik Buterin, Binance Cold Storage, Justin Sun, etc.) with a single click.
+* **Deep Insights:** See exactly what the biggest players in crypto are holding.
 
-## Learn More
+### 🎨 Cyberpunk UI/UX
+* **Glassmorphism Design:** Frosted glass panels, neon borders, and glowing text effects.
+* **Custom Modals:** Replaced all native browser popups with styled, dark-mode modals.
+* **Responsive:** Fully fluid layout that works on desktop and mobile.
+* **CSV Export:** Download full portfolio data for spreadsheet analysis.
 
-To learn more about Next.js, take a look at the following resources:
+---
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## 🛠️ Tech Stack
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+* **Framework:** [Next.js 14](https://nextjs.org/) (App Router)
+* **Language:** [TypeScript](https://www.typescriptlang.org/)
+* **Styling:** [React Bootstrap](https://react-bootstrap.github.io/) + Custom CSS-in-JS
+* **Backend/Auth:** [Supabase](https://supabase.com/) (Magic Link Auth & PostgreSQL)
+* **Blockchain Interaction:** [Ethers.js v6](https://docs.ethers.org/)
+* **Data Sources:**
+    * **Chainlink Oracle:** Decentralized ETH Price feeds.
+    * **CoinLore:** Global Volume data.
+    * **Ethplorer:** Token balances and metadata.
+    * **LlamaRPC:** Public RPC endpoint for blockchain connection.
 
-## Deploy on Vercel
+---
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+## 🖼️ Application Overview
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+### Login Screen
+A secure, email-based Magic Link login system styled with a dark, minimalist aesthetic.
+
+### The Dashboard
+* **Top Bar:** Live ETH Price ticker (On-Chain) and Disconnect button.
+* **Stats Deck:** Total Net Worth and Global 24H Volume with neon glow effects.
+* **Wallet Cards:** Individual cards for every tracked wallet showing granular token details, balances, and values.
