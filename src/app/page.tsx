@@ -6,25 +6,11 @@ import { ethers } from 'ethers'
 import { Container, Navbar, Button, Card, Form, Row, Col, Table, Spinner, Badge, Modal } from 'react-bootstrap'
 import { Session } from '@supabase/supabase-js'
 import { Rajdhani } from 'next/font/google'
-import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip as RechartsTooltip } from 'recharts'
 
 const techFont = Rajdhani({ 
   subsets: ['latin'], 
   weight: ['400', '600', '700'] 
 })
-
-const COLORS = ['#00f3ff', '#bc13fe', '#fe135d', '#f3fe13', '#13fe8d']
-
-const NETWORKS = {
-  ethereum: "https://eth.llamarpc.com",
-}
-
-const FAMOUS_WHALES = [
-  { name: "Binance Cold Wallet", address: "0x47ac0Fb4F2D84898e4D9E7b4DaB3C24507a6D503" },
-  { name: "Vitalik Buterin", address: "0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045" },
-  { name: "Ethereum Foundation", address: "0xde0B295669a9FD93d5F28D9Ec85E40f4cb697BAe" },
-  { name: "Justin Sun (Tron)", address: "0x3DdfA8eC3052539b6C9549F12cEA2C295cfF5296" }
-]
 
 interface Token {
   symbol: string
@@ -45,13 +31,31 @@ interface WalletData {
   tokens: Token[]
 }
 
-function AnimatedCounter({ value, prefix = "$" }: { value: number, prefix?: string }) {
-  const [displayValue, setDisplayValue] = useState(value)
-  const previousValue = useRef(value)
+const NETWORKS = {
+  ethereum: "https://eth.llamarpc.com",
+}
+
+const CHAINLINK_ETH_USD_FEED = "0x5f4eC3Df9cbd43714FE2740f5E3616155c5b8419"
+const CHAINLINK_ABI = ["function latestAnswer() view returns (int256)"]
+
+const FAMOUS_WHALES = [
+  { name: "Binance Cold Wallet", address: "0x47ac0Fb4F2D84898e4D9E7b4DaB3C24507a6D503" },
+  { name: "Vitalik Buterin", address: "0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045" },
+  { name: "Ethereum Foundation", address: "0xde0B295669a9FD93d5F28D9Ec85E40f4cb697BAe" },
+  { name: "Kraken Exchange", address: "0x2910543Af39abA0Cd09dBb2D50200b3E800A63D2" },
+  { name: "Crypto.com Cold", address: "0x6262998Ced04146fA42253a5C0AF90CA02dfd2A3" },
+  { name: "Justin Sun (Tron)", address: "0x3DdfA8eC3052539b6C9549F12cEA2C295cfF5296" }
+]
+
+function AnimatedCounter({ value, prefix = "$" }: { value: number | null, prefix?: string }) {
+  const [displayValue, setDisplayValue] = useState(value || 0)
+  const previousValue = useRef(value || 0)
   const startTime = useRef<number | null>(null)
   const duration = 1500 
 
   useEffect(() => {
+    if (value === null) return
+
     previousValue.current = displayValue
     startTime.current = null
     let animationFrameId: number
@@ -72,7 +76,11 @@ function AnimatedCounter({ value, prefix = "$" }: { value: number, prefix?: stri
 
     animationFrameId = requestAnimationFrame(animate)
     return () => cancelAnimationFrame(animationFrameId)
-  }, [value])
+  }, [value]) 
+
+  if (value === null) {
+    return <span>{prefix}--</span>
+  }
 
   return (
     <span>
@@ -90,7 +98,7 @@ export default function Home() {
   const [loginMessage, setLoginMessage] = useState<string>('')
   
   const [liveEthPrice, setLiveEthPrice] = useState<number>(0)
-  const [liveGlobalVolume, setLiveGlobalVolume] = useState<number>(0)
+  const [liveGlobalVolume, setLiveGlobalVolume] = useState<number | null>(null)
   
   const [hideDust, setHideDust] = useState<boolean>(true)
   const [showWhaleModal, setShowWhaleModal] = useState<boolean>(false)
@@ -105,6 +113,8 @@ export default function Home() {
   const [showAlertModal, setShowAlertModal] = useState(false)
   const [alertMessage, setAlertMessage] = useState('')
 
+  const hasFetchedMarketData = useRef(false)
+
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session)
@@ -116,10 +126,14 @@ export default function Home() {
       if (session) initDashboard(session.user.id)
     })
 
-    fetchMarketData() 
+    if (!hasFetchedMarketData.current) {
+        fetchMarketData()
+        hasFetchedMarketData.current = true
+    }
+
     const intervalId = setInterval(() => {
         fetchMarketData()
-    }, 15000)
+    }, 120000) 
 
     return () => {
         subscription.unsubscribe()
@@ -129,27 +143,34 @@ export default function Home() {
 
   const initDashboard = (userId: string) => {
     fetchSavedWallets(userId)
-    fetchMarketData()
   }
 
   const fetchMarketData = async () => {
     try {
-        const ethRes = await fetch('https://api.coincap.io/v2/assets/ethereum')
-        const ethJson = await ethRes.json()
-        if (ethJson.data && ethJson.data.priceUsd) {
-            setLiveEthPrice(parseFloat(ethJson.data.priceUsd))
+        const provider = new ethers.JsonRpcProvider(NETWORKS.ethereum)
+        const priceFeed = new ethers.Contract(CHAINLINK_ETH_USD_FEED, CHAINLINK_ABI, provider)
+        const roundData = await priceFeed.latestAnswer()
+        const price = Number(roundData) / 100000000 
+        setLiveEthPrice(price)
+    } catch (e) {
+        try {
+            const res = await fetch('https://min-api.cryptocompare.com/data/price?fsym=ETH&tsyms=USD')
+            const json = await res.json()
+            if (json.USD) setLiveEthPrice(json.USD)
+        } catch (err) {
+            console.error(err)
         }
+    }
 
-        const assetsRes = await fetch('https://api.coincap.io/v2/assets?limit=100')
-        const assetsJson = await assetsRes.json()
-        if (assetsJson.data) {
-            const totalVol = assetsJson.data.reduce((acc: number, asset: any) => {
-                return acc + (parseFloat(asset.volumeUsd24Hr) || 0)
-            }, 0)
-            setLiveGlobalVolume(totalVol)
+    try {
+        const globalRes = await fetch('https://api.coinlore.net/api/global/')
+        const globalJson = await globalRes.json()
+        if (Array.isArray(globalJson) && globalJson.length > 0) {
+             const vol = globalJson[0].total_volume || globalJson[0].volume_24h
+             if (vol) setLiveGlobalVolume(vol)
         }
     } catch (e) {
-        console.warn('Market Data Error:', e)
+        setLiveGlobalVolume(null) 
     }
   }
 
@@ -178,7 +199,7 @@ export default function Home() {
           ensName = await provider.lookupAddress(w.wallet_address)
         } catch {}
 
-        const res = await fetch(`https://api.ethplorer.io/getAddressInfo/${w.wallet_address}?apiKey=freekey`)
+        const res = await fetch(`https://api.ethplorer.io/getAddressInfo/${w.wallet_address}?apiKey=EK-jgPe8-vuG5SS3-yENUQ`)
         const data = await res.json()
 
         if (data.ETH) {
@@ -223,40 +244,24 @@ export default function Home() {
     setLoading(false)
   }
 
-  const { totalNetWorth, displayWallets, chartData } = useMemo(() => {
+  const { totalNetWorth, displayWallets } = useMemo(() => {
     let grandTotal = 0
-    const assetDistribution: Record<string, number> = {}
-
     const processedWallets = wallets.map(wallet => {
         let walletTotal = 0
         const processedTokens = wallet.tokens.map(token => {
             let finalPrice = token.price
             let finalValue = token.valueUSD
             if (token.isNative || token.symbol === 'ETH') {
-                finalPrice = liveEthPrice
-                finalValue = token.balance * liveEthPrice
+                finalPrice = liveEthPrice || token.price 
+                finalValue = token.balance * finalPrice
             }
             walletTotal += finalValue
-            
-            if(assetDistribution[token.symbol]) {
-                assetDistribution[token.symbol] += finalValue
-            } else {
-                assetDistribution[token.symbol] = finalValue
-            }
-
             return { ...token, price: finalPrice, valueUSD: finalValue }
         })
         grandTotal += walletTotal
         return { ...wallet, tokens: processedTokens, totalValueUSD: walletTotal }
     })
-
-    const chartArray = Object.keys(assetDistribution)
-        .map(key => ({ name: key, value: assetDistribution[key] }))
-        .sort((a, b) => b.value - a.value)
-        .filter(item => item.value > 10) 
-        .slice(0, 5) 
-
-    return { totalNetWorth: grandTotal, displayWallets: processedWallets, chartData: chartArray }
+    return { totalNetWorth: grandTotal, displayWallets: processedWallets }
   }, [wallets, liveEthPrice])
 
   const handleLogin = async (e: React.FormEvent) => {
@@ -361,7 +366,7 @@ export default function Home() {
         <Card className="shadow-lg border-0 p-5" style={{ width: '100%', maxWidth: '400px', background: '#0a0a0a', border: '1px solid #1a1a1a' }}>
           <Form onSubmit={handleLogin}>
             <Form.Group className="mb-4">
-              <Form.Label className="text-white-50 small letter-spacing-2">ACCESS PROTOCOL</Form.Label>
+              <Form.Label className="text-secondary small letter-spacing-2">ACCESS PROTOCOL</Form.Label>
               <Form.Control type="email" placeholder="name@example.com" value={email} onChange={e => setEmail(e.target.value)} required style={{background: '#000', border: '1px solid #333', color: 'white'}} />
             </Form.Group>
             <Button variant="outline-info" type="submit" className="w-100 py-3 fw-bold rounded-0" disabled={loading} style={{boxShadow: '0 0 15px rgba(0,243,255,0.2)', letterSpacing: '2px'}}>
@@ -407,8 +412,7 @@ export default function Home() {
         }
 
         .text-neon { color: #00f3ff; text-shadow: 0 0 15px rgba(0,243,255,0.5); }
-        .text-white-bright { color: #fff !important; text-shadow: 0 0 10px rgba(255,255,255,0.1); }
-        .text-white-50-custom { color: rgba(255,255,255,0.6) !important; }
+        .text-white-bright { color: #fff !important; text-shadow: 0 0 10px rgba(255,255,255,0.2); }
 
         .form-control-cyber {
             background: #000 !important;
@@ -424,7 +428,7 @@ export default function Home() {
         }
 
         .table-cyber { --bs-table-bg: transparent; --bs-table-color: #fff; border-color: #1a1a1a; }
-        .table-cyber th { color: #888; font-weight: 600; letter-spacing: 1px; font-size: 0.8rem; text-transform: uppercase; border-bottom: 1px solid #222; }
+        .table-cyber th { color: #666; font-weight: 600; letter-spacing: 1px; font-size: 0.8rem; text-transform: uppercase; border-bottom: 1px solid #222; }
         .table-cyber td { vertical-align: middle; border-bottom: 1px solid #1a1a1a; font-size: 1.1rem; }
         
         .modal-content {
@@ -478,8 +482,10 @@ export default function Home() {
           </Navbar.Brand>
           <div className="d-flex align-items-center gap-4">
             <div className="d-flex align-items-center gap-2 px-3 py-2 rounded-0" style={{background: 'rgba(0,0,0,0.5)', border: '1px solid #222'}}>
-                <div className="live-dot"></div>
-                <span className="text-white small fw-bold font-monospace">ETH: ${liveEthPrice.toLocaleString()}</span>
+                <div className={`live-dot ${liveEthPrice === 0 ? 'bg-danger' : ''}`}></div>
+                <span className="text-white small fw-bold font-monospace">
+                   ETH: {liveEthPrice > 0 ? `$${liveEthPrice.toLocaleString()}` : 'CONNECTING...'}
+                </span>
             </div>
             <Button size="sm" onClick={handleLogout} className="btn-neon-outline px-4 py-2" style={{letterSpacing: '1px', fontSize: '0.8rem'}}>DISCONNECT</Button>
           </div>
@@ -491,7 +497,7 @@ export default function Home() {
           <Col md={6}>
             <Card className="cyber-card h-100 text-center py-5">
               <Card.Body className="d-flex flex-column justify-content-center">
-                <h6 className="text-white-50-custom mb-3" style={{letterSpacing: '3px', fontSize: '0.8rem'}}>TOTAL NET WORTH</h6>
+                <h6 className="text-secondary mb-3" style={{letterSpacing: '3px', fontSize: '0.8rem'}}>TOTAL NET WORTH</h6>
                 <h1 className="display-3 fw-bold mb-0 text-white-bright">
                     <AnimatedCounter value={totalNetWorth} />
                 </h1>
@@ -501,7 +507,7 @@ export default function Home() {
           <Col md={6}>
             <Card className="cyber-card h-100 text-center py-5">
               <Card.Body className="d-flex flex-column justify-content-center">
-                <h6 className="text-white-50-custom mb-3" style={{letterSpacing: '3px', fontSize: '0.8rem'}}>GLOBAL CRYPTO VOLUME (24H)</h6>
+                <h6 className="text-secondary mb-3" style={{letterSpacing: '3px', fontSize: '0.8rem'}}>GLOBAL CRYPTO VOLUME (24H)</h6>
                 <h1 className="display-3 fw-bold mb-0 text-neon">
                     <AnimatedCounter value={liveGlobalVolume} />
                 </h1>
@@ -546,7 +552,7 @@ export default function Home() {
                     <div>
                         <div className="d-flex align-items-center gap-3">
                             <h4 className="mb-0 fw-bold text-white-bright">{wallet.nickname || wallet.ens_name || 'Unknown Wallet'}</h4>
-                            <Button variant="link" className="p-0 text-white-50-custom" onClick={() => requestRename(wallet.id, wallet.nickname)}>✎</Button>
+                            <Button variant="link" className="p-0 text-secondary" onClick={() => requestRename(wallet.id, wallet.nickname)}>✎</Button>
                         </div>
                         <div className="d-flex align-items-center gap-2 mt-1">
                             <small className="font-monospace text-white opacity-75">{wallet.wallet_address}</small>
@@ -583,7 +589,7 @@ export default function Home() {
                           </tr>
                       ))}
                       {wallet.tokens.length === 0 && (
-                        <tr><td colSpan={4} className="text-center py-5 text-white-50-custom fst-italic">NO ASSETS DETECTED</td></tr>
+                        <tr><td colSpan={4} className="text-center py-5 text-muted fst-italic">NO ASSETS DETECTED</td></tr>
                       )}
                     </tbody>
                   </Table>
@@ -612,7 +618,7 @@ export default function Home() {
         <Modal.Header className="bg-danger text-white border-0"><Modal.Title>SYSTEM WARNING</Modal.Title></Modal.Header>
         <Modal.Body className="text-center py-5 bg-black text-white">
           <h2 className="mb-3 text-danger">TERMINATE TRACKING?</h2>
-          <p className="text-white-50-custom">This action will remove the wallet from your local dashboard immediately.</p>
+          <p className="text-muted">This action will remove the wallet from your local dashboard immediately.</p>
           <div className="d-flex justify-content-center gap-3 mt-5">
              <Button variant="outline-secondary" onClick={() => setShowDeleteModal(false)} className="px-4 rounded-0">CANCEL</Button>
              <Button variant="danger" onClick={confirmDelete} className="px-5 rounded-0">CONFIRM</Button>
