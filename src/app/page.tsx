@@ -663,7 +663,7 @@ export default function Home() {
         <Modal.Header className="bg-danger text-white border-0"><Modal.Title>SYSTEM WARNING</Modal.Title></Modal.Header>
         <Modal.Body className="text-center py-5 bg-black text-white">
           <h2 className="mb-3 text-danger">TERMINATE TRACKING?</h2>
-          <p className="text-white-50-custom">This action will remove the wallet from your local dashboard immediately.</p>
+          <p className="text-white">This action will remove the wallet from your local dashboard immediately.</p>
           <div className="d-flex justify-content-center gap-3 mt-5">
              <Button variant="outline-secondary" onClick={() => setShowDeleteModal(false)} className="px-4 rounded-0">CANCEL</Button>
              <Button variant="danger" onClick={confirmDelete} className="px-5 rounded-0">CONFIRM</Button>
