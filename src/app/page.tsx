@@ -6,6 +6,7 @@ import { ethers } from 'ethers'
 import { Container, Navbar, Button, Card, Form, Row, Col, Table, Spinner, Badge, Modal } from 'react-bootstrap'
 import { Session } from '@supabase/supabase-js'
 import { Rajdhani } from 'next/font/google'
+import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip as RechartsTooltip } from 'recharts'
 
 const techFont = Rajdhani({ 
   subsets: ['latin'], 
@@ -225,8 +226,10 @@ export default function Home() {
     setLoading(false)
   }
 
-  const { totalNetWorth, displayWallets } = useMemo(() => {
+  const { totalNetWorth, displayWallets, chartData } = useMemo(() => {
     let grandTotal = 0
+    const assetDistribution: Record<string, number> = {}
+
     const processedWallets = wallets.map(wallet => {
         let walletTotal = 0
         const processedTokens = wallet.tokens.map(token => {
@@ -237,21 +240,39 @@ export default function Home() {
                 finalValue = token.balance * liveEthPrice
             }
             walletTotal += finalValue
+            
+            if(assetDistribution[token.symbol]) {
+                assetDistribution[token.symbol] += finalValue
+            } else {
+                assetDistribution[token.symbol] = finalValue
+            }
+
             return { ...token, price: finalPrice, valueUSD: finalValue }
         })
         grandTotal += walletTotal
         return { ...wallet, tokens: processedTokens, totalValueUSD: walletTotal }
     })
-    return { totalNetWorth: grandTotal, displayWallets: processedWallets }
+
+    const chartArray = Object.keys(assetDistribution)
+        .map(key => ({ name: key, value: assetDistribution[key] }))
+        .sort((a, b) => b.value - a.value)
+        .filter(item => item.value > 10) 
+        .slice(0, 5) 
+
+    return { totalNetWorth: grandTotal, displayWallets: processedWallets, chartData: chartArray }
   }, [wallets, liveEthPrice])
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
     setLoading(true)
+    
+    // Explicitly grab the current URL (localhost or vercel app)
+    const currentURL = window.location.origin
+    
     const { error } = await supabase.auth.signInWithOtp({ 
         email,
         options: {
-            emailRedirectTo: typeof window !== 'undefined' ? window.location.origin : undefined
+            emailRedirectTo: currentURL
         }
     })
     setLoginMessage(error ? error.message : 'Check your email for the magic link!')
@@ -360,7 +381,7 @@ export default function Home() {
         <Card className="shadow-lg border-0 p-5" style={{ width: '100%', maxWidth: '400px', background: '#0a0a0a', border: '1px solid #1a1a1a' }}>
           <Form onSubmit={handleLogin}>
             <Form.Group className="mb-4">
-              <Form.Label className="text-secondary small letter-spacing-2">ACCESS PROTOCOL</Form.Label>
+              <Form.Label className="text-white-50 small letter-spacing-2">ACCESS PROTOCOL</Form.Label>
               <Form.Control type="email" placeholder="name@example.com" value={email} onChange={e => setEmail(e.target.value)} required style={{background: '#000', border: '1px solid #333', color: 'white'}} />
             </Form.Group>
             <Button variant="outline-info" type="submit" className="w-100 py-3 fw-bold rounded-0" disabled={loading} style={{boxShadow: '0 0 15px rgba(0,243,255,0.2)', letterSpacing: '2px'}}>
@@ -406,7 +427,8 @@ export default function Home() {
         }
 
         .text-neon { color: #00f3ff; text-shadow: 0 0 15px rgba(0,243,255,0.5); }
-        .text-white-bright { color: #fff !important; text-shadow: 0 0 10px rgba(255,255,255,0.2); }
+        .text-white-bright { color: #fff !important; text-shadow: 0 0 10px rgba(255,255,255,0.1); }
+        .text-white-50-custom { color: rgba(255,255,255,0.6) !important; }
 
         .form-control-cyber {
             background: #000 !important;
@@ -422,7 +444,7 @@ export default function Home() {
         }
 
         .table-cyber { --bs-table-bg: transparent; --bs-table-color: #fff; border-color: #1a1a1a; }
-        .table-cyber th { color: #666; font-weight: 600; letter-spacing: 1px; font-size: 0.8rem; text-transform: uppercase; border-bottom: 1px solid #222; }
+        .table-cyber th { color: #888; font-weight: 600; letter-spacing: 1px; font-size: 0.8rem; text-transform: uppercase; border-bottom: 1px solid #222; }
         .table-cyber td { vertical-align: middle; border-bottom: 1px solid #1a1a1a; font-size: 1.1rem; }
         
         .modal-content {
@@ -488,24 +510,53 @@ export default function Home() {
 
       <Container style={{marginTop: '120px'}}>
         <Row className="mb-5 g-4">
-          <Col md={6}>
+          <Col md={4}>
             <Card className="cyber-card h-100 text-center py-5">
               <Card.Body className="d-flex flex-column justify-content-center">
-                <h6 className="text-secondary mb-3" style={{letterSpacing: '3px', fontSize: '0.8rem'}}>TOTAL NET WORTH</h6>
-                <h1 className="display-3 fw-bold mb-0 text-white-bright">
+                <h6 className="text-white-50-custom mb-3" style={{letterSpacing: '3px', fontSize: '0.8rem'}}>TOTAL NET WORTH</h6>
+                <h1 className="display-4 fw-bold mb-0 text-white-bright">
                     <AnimatedCounter value={totalNetWorth} />
                 </h1>
               </Card.Body>
             </Card>
           </Col>
-          <Col md={6}>
+          <Col md={4}>
             <Card className="cyber-card h-100 text-center py-5">
               <Card.Body className="d-flex flex-column justify-content-center">
-                <h6 className="text-secondary mb-3" style={{letterSpacing: '3px', fontSize: '0.8rem'}}>GLOBAL CRYPTO VOLUME (24H)</h6>
-                <h1 className="display-3 fw-bold mb-0 text-neon">
+                <h6 className="text-white-50-custom mb-3" style={{letterSpacing: '3px', fontSize: '0.8rem'}}>GLOBAL CRYPTO VOLUME (24H)</h6>
+                <h1 className="display-4 fw-bold mb-0 text-neon">
                     <AnimatedCounter value={liveGlobalVolume} />
                 </h1>
               </Card.Body>
+            </Card>
+          </Col>
+          <Col md={4}>
+            <Card className="cyber-card h-100 py-2">
+                <Card.Body className="d-flex align-items-center justify-content-center flex-column">
+                    <h6 className="text-white-50-custom mb-2" style={{letterSpacing: '3px', fontSize: '0.8rem'}}>PORTFOLIO SPLIT</h6>
+                    <div style={{ width: '100%', height: 120 }}>
+                        <ResponsiveContainer>
+                            <PieChart>
+                                <Pie
+                                    data={chartData}
+                                    innerRadius={30}
+                                    outerRadius={50}
+                                    paddingAngle={5}
+                                    dataKey="value"
+                                    stroke="none"
+                                >
+                                    {chartData.map((entry, index) => (
+                                        <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                                    ))}
+                                </Pie>
+                                <RechartsTooltip 
+                                    contentStyle={{background: '#000', border: '1px solid #333', borderRadius: '0', color: 'white'}}
+                                    itemStyle={{color: '#00f3ff'}}
+                                />
+                            </PieChart>
+                        </ResponsiveContainer>
+                    </div>
+                </Card.Body>
             </Card>
           </Col>
         </Row>
@@ -546,7 +597,7 @@ export default function Home() {
                     <div>
                         <div className="d-flex align-items-center gap-3">
                             <h4 className="mb-0 fw-bold text-white-bright">{wallet.nickname || wallet.ens_name || 'Unknown Wallet'}</h4>
-                            <Button variant="link" className="p-0 text-secondary" onClick={() => requestRename(wallet.id, wallet.nickname)}>✎</Button>
+                            <Button variant="link" className="p-0 text-white-50-custom" onClick={() => requestRename(wallet.id, wallet.nickname)}>✎</Button>
                         </div>
                         <div className="d-flex align-items-center gap-2 mt-1">
                             <small className="font-monospace text-white opacity-75">{wallet.wallet_address}</small>
@@ -583,7 +634,7 @@ export default function Home() {
                           </tr>
                       ))}
                       {wallet.tokens.length === 0 && (
-                        <tr><td colSpan={4} className="text-center py-5 text-muted fst-italic">NO ASSETS DETECTED</td></tr>
+                        <tr><td colSpan={4} className="text-center py-5 text-white-50-custom fst-italic">NO ASSETS DETECTED</td></tr>
                       )}
                     </tbody>
                   </Table>
@@ -612,7 +663,7 @@ export default function Home() {
         <Modal.Header className="bg-danger text-white border-0"><Modal.Title>SYSTEM WARNING</Modal.Title></Modal.Header>
         <Modal.Body className="text-center py-5 bg-black text-white">
           <h2 className="mb-3 text-danger">TERMINATE TRACKING?</h2>
-          <p className="text-muted">This action will remove the wallet from your local dashboard immediately.</p>
+          <p className="text-white-50-custom">This action will remove the wallet from your local dashboard immediately.</p>
           <div className="d-flex justify-content-center gap-3 mt-5">
              <Button variant="outline-secondary" onClick={() => setShowDeleteModal(false)} className="px-4 rounded-0">CANCEL</Button>
              <Button variant="danger" onClick={confirmDelete} className="px-5 rounded-0">CONFIRM</Button>
