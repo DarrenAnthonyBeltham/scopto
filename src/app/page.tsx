@@ -12,6 +12,19 @@ const techFont = Rajdhani({
   weight: ['400', '600', '700'] 
 })
 
+const COLORS = ['#00f3ff', '#bc13fe', '#fe135d', '#f3fe13', '#13fe8d']
+
+const NETWORKS = {
+  ethereum: "https://eth.llamarpc.com",
+}
+
+const FAMOUS_WHALES = [
+  { name: "Binance Cold Wallet", address: "0x47ac0Fb4F2D84898e4D9E7b4DaB3C24507a6D503" },
+  { name: "Vitalik Buterin", address: "0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045" },
+  { name: "Ethereum Foundation", address: "0xde0B295669a9FD93d5F28D9Ec85E40f4cb697BAe" },
+  { name: "Justin Sun (Tron)", address: "0x3DdfA8eC3052539b6C9549F12cEA2C295cfF5296" }
+]
+
 interface Token {
   symbol: string
   name: string
@@ -31,31 +44,13 @@ interface WalletData {
   tokens: Token[]
 }
 
-const NETWORKS = {
-  ethereum: "https://eth.llamarpc.com",
-}
-
-const CHAINLINK_ETH_USD_FEED = "0x5f4eC3Df9cbd43714FE2740f5E3616155c5b8419"
-const CHAINLINK_ABI = ["function latestAnswer() view returns (int256)"]
-
-const FAMOUS_WHALES = [
-  { name: "Binance Cold Wallet", address: "0x47ac0Fb4F2D84898e4D9E7b4DaB3C24507a6D503" },
-  { name: "Vitalik Buterin", address: "0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045" },
-  { name: "Ethereum Foundation", address: "0xde0B295669a9FD93d5F28D9Ec85E40f4cb697BAe" },
-  { name: "Kraken Exchange", address: "0x2910543Af39abA0Cd09dBb2D50200b3E800A63D2" },
-  { name: "Crypto.com Cold", address: "0x6262998Ced04146fA42253a5C0AF90CA02dfd2A3" },
-  { name: "Justin Sun (Tron)", address: "0x3DdfA8eC3052539b6C9549F12cEA2C295cfF5296" }
-]
-
-function AnimatedCounter({ value, prefix = "$" }: { value: number | null, prefix?: string }) {
-  const [displayValue, setDisplayValue] = useState(value || 0)
-  const previousValue = useRef(value || 0)
+function AnimatedCounter({ value, prefix = "$" }: { value: number, prefix?: string }) {
+  const [displayValue, setDisplayValue] = useState(value)
+  const previousValue = useRef(value)
   const startTime = useRef<number | null>(null)
   const duration = 1500 
 
   useEffect(() => {
-    if (value === null) return
-
     previousValue.current = displayValue
     startTime.current = null
     let animationFrameId: number
@@ -76,11 +71,7 @@ function AnimatedCounter({ value, prefix = "$" }: { value: number | null, prefix
 
     animationFrameId = requestAnimationFrame(animate)
     return () => cancelAnimationFrame(animationFrameId)
-  }, [value]) 
-
-  if (value === null) {
-    return <span>{prefix}--</span>
-  }
+  }, [value])
 
   return (
     <span>
@@ -91,6 +82,7 @@ function AnimatedCounter({ value, prefix = "$" }: { value: number | null, prefix
 
 export default function Home() {
   const [session, setSession] = useState<Session | null>(null)
+  const [authLoading, setAuthLoading] = useState<boolean>(true)
   const [loading, setLoading] = useState<boolean>(false)
   const [addressInput, setAddressInput] = useState<string>('')
   const [wallets, setWallets] = useState<WalletData[]>([])
@@ -98,7 +90,7 @@ export default function Home() {
   const [loginMessage, setLoginMessage] = useState<string>('')
   
   const [liveEthPrice, setLiveEthPrice] = useState<number>(0)
-  const [liveGlobalVolume, setLiveGlobalVolume] = useState<number | null>(null)
+  const [liveGlobalVolume, setLiveGlobalVolume] = useState<number>(0)
   
   const [hideDust, setHideDust] = useState<boolean>(true)
   const [showWhaleModal, setShowWhaleModal] = useState<boolean>(false)
@@ -113,27 +105,23 @@ export default function Home() {
   const [showAlertModal, setShowAlertModal] = useState(false)
   const [alertMessage, setAlertMessage] = useState('')
 
-  const hasFetchedMarketData = useRef(false)
-
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session)
       if (session) initDashboard(session.user.id)
+      setAuthLoading(false)
     })
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setSession(session)
       if (session) initDashboard(session.user.id)
+      setAuthLoading(false)
     })
 
-    if (!hasFetchedMarketData.current) {
-        fetchMarketData()
-        hasFetchedMarketData.current = true
-    }
-
+    fetchMarketData() 
     const intervalId = setInterval(() => {
         fetchMarketData()
-    }, 120000) 
+    }, 15000)
 
     return () => {
         subscription.unsubscribe()
@@ -143,34 +131,27 @@ export default function Home() {
 
   const initDashboard = (userId: string) => {
     fetchSavedWallets(userId)
+    fetchMarketData()
   }
 
   const fetchMarketData = async () => {
     try {
-        const provider = new ethers.JsonRpcProvider(NETWORKS.ethereum)
-        const priceFeed = new ethers.Contract(CHAINLINK_ETH_USD_FEED, CHAINLINK_ABI, provider)
-        const roundData = await priceFeed.latestAnswer()
-        const price = Number(roundData) / 100000000 
-        setLiveEthPrice(price)
-    } catch (e) {
-        try {
-            const res = await fetch('https://min-api.cryptocompare.com/data/price?fsym=ETH&tsyms=USD')
-            const json = await res.json()
-            if (json.USD) setLiveEthPrice(json.USD)
-        } catch (err) {
-            console.error(err)
+        const ethRes = await fetch('https://api.coincap.io/v2/assets/ethereum')
+        const ethJson = await ethRes.json()
+        if (ethJson.data && ethJson.data.priceUsd) {
+            setLiveEthPrice(parseFloat(ethJson.data.priceUsd))
         }
-    }
 
-    try {
-        const globalRes = await fetch('https://api.coinlore.net/api/global/')
-        const globalJson = await globalRes.json()
-        if (Array.isArray(globalJson) && globalJson.length > 0) {
-             const vol = globalJson[0].total_volume || globalJson[0].volume_24h
-             if (vol) setLiveGlobalVolume(vol)
+        const assetsRes = await fetch('https://api.coincap.io/v2/assets?limit=100')
+        const assetsJson = await assetsRes.json()
+        if (assetsJson.data) {
+            const totalVol = assetsJson.data.reduce((acc: number, asset: any) => {
+                return acc + (parseFloat(asset.volumeUsd24Hr) || 0)
+            }, 0)
+            setLiveGlobalVolume(totalVol)
         }
     } catch (e) {
-        setLiveGlobalVolume(null) 
+        console.warn('Market Data Error:', e)
     }
   }
 
@@ -199,7 +180,7 @@ export default function Home() {
           ensName = await provider.lookupAddress(w.wallet_address)
         } catch {}
 
-        const res = await fetch(`https://api.ethplorer.io/getAddressInfo/${w.wallet_address}?apiKey=EK-jgPe8-vuG5SS3-yENUQ`)
+        const res = await fetch(`https://api.ethplorer.io/getAddressInfo/${w.wallet_address}?apiKey=freekey`)
         const data = await res.json()
 
         if (data.ETH) {
@@ -252,8 +233,8 @@ export default function Home() {
             let finalPrice = token.price
             let finalValue = token.valueUSD
             if (token.isNative || token.symbol === 'ETH') {
-                finalPrice = liveEthPrice || token.price 
-                finalValue = token.balance * finalPrice
+                finalPrice = liveEthPrice
+                finalValue = token.balance * liveEthPrice
             }
             walletTotal += finalValue
             return { ...token, price: finalPrice, valueUSD: finalValue }
@@ -267,7 +248,12 @@ export default function Home() {
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
     setLoading(true)
-    const { error } = await supabase.auth.signInWithOtp({ email })
+    const { error } = await supabase.auth.signInWithOtp({ 
+        email,
+        options: {
+            emailRedirectTo: typeof window !== 'undefined' ? window.location.origin : undefined
+        }
+    })
     setLoginMessage(error ? error.message : 'Check your email for the magic link!')
     setLoading(false)
   }
@@ -357,6 +343,14 @@ export default function Home() {
     document.body.appendChild(link)
     link.click()
     document.body.removeChild(link)
+  }
+
+  if (authLoading) {
+    return (
+        <Container fluid className={`d-flex flex-column align-items-center justify-content-center vh-100 ${techFont.className}`} style={{background: '#050505'}}>
+            <Spinner animation="border" variant="info" />
+        </Container>
+    )
   }
 
   if (!session) {
